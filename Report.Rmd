@@ -1,0 +1,30 @@
+---
+title: "Report for TMDb"
+author: "Boiko_Ustym"
+date: "2023-09-26"
+output:  
+  html_document:
+    df_print: paged
+---
+
+```{r, message=FALSE, warning=FALSE}
+# Завантаження покетів та набору даних
+library(tidyverse)
+TMDB <- read_csv("U:/Master's_work_Boiko/Data_Analysis_movie/tmdb_movies.csv")
+TMDB
+```
+
+```{r}
+# Кількість зміних і спостережень
+dim(TMDB)
+```
+
+```{r}
+# Імена зміних
+names(TMDB)
+```
+```{r}
+# Видалення нерелевантних даних
+TMDB_clean <- TMDB %>% select(-c(imdb_id, homepage, tagline, keywords, overview, production_companies, budget_adj, revenue_adj))
+TMDB_clean
+```
