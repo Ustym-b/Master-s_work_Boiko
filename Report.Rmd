@@ -25,6 +25,84 @@ names(TMDB)
 ```
 ```{r}
 # Видалення нерелевантних даних
-TMDB_clean <- TMDB %>% select(-c(imdb_id, homepage, tagline, keywords, overview, production_companies, budget_adj, revenue_adj))
-TMDB_clean
+TMDB_cleaned <- TMDB %>% select(-c(imdb_id, budget, revenue, homepage, tagline, keywords, overview, production_companies, release_date))
+TMDB_cleaned
 ```
+```{r}
+# Перевірка кількість NA значень у кожній змінній
+na_count <- sapply(TMDB_cleaned, function(y) sum(length(which(is.na(y)))))
+print(na_count)
+```
+
+```{r}
+# Видалення рядків, які містять NA значення
+TMDB_cleaned <- na.omit(TMDB_cleaned)
+print(sum(is.na(TMDB_cleaned)))
+```
+```{r}
+# Перевірка кількість NA значень у кожній змінній
+na_count <- sapply(TMDB_cleaned, function(y) sum(length(which(is.na(y)))))
+# Перевірка результату
+print(na_count)
+```
+```{r}
+# Кількість зміних і спостережень
+dim(TMDB_cleaned)
+```
+```{r}
+# Перевірка на кількість 0 значень у кожній змінній
+zero_count <- sapply(TMDB_cleaned, function(y) sum(y == 0, na.rm = TRUE))
+print(zero_count)
+```
+```{r}
+# Видалення рядків, де budget, revenue та runtime дорівнює 0
+TMDB_cleaned <- TMDB_cleaned %>%
+  filter(budget_adj > 0 & revenue_adj > 0 & runtime > 0)
+
+# Перевірка результату
+summary(TMDB_cleaned$budget_adj)
+summary(TMDB_cleaned$revenue_adj)
+summary(TMDB_cleaned$runtime)
+```
+```{r}
+# Кількість зміних і спостережень
+dim(TMDB_cleaned)
+```
+```{r}
+# Перевірка на наявність дублікатів
+original_nrow <- nrow(TMDB_cleaned)
+duplicated_rows <- TMDB_cleaned[duplicated(TMDB_cleaned),]
+
+# Якщо є дублікати, вивести їх кількість
+if(nrow(duplicated_rows) > 0) {
+  print(paste("Number of duplicated rows: ", nrow(duplicated_rows)))
+}
+```
+```{r}
+# Видалення дублікатів
+TMDB_cleaned <- distinct(TMDB_cleaned)
+
+# Перевірка результату
+new_nrow <- nrow(TMDB_cleaned)
+print(paste("Кількість рядків до видалення дублікатів: ", original_nrow))
+print(paste("Кількість рядків після видалення дублікатів: ", new_nrow))
+```
+```{r}
+# Виведення структури DataFrame, що включає імена та типи змінних, а також перші кілька значень кожної змінної
+str(TMDB_cleaned)
+```
+```{r}
+# Перевірка розміру DataFrame
+print(paste("Кількість рядків: ", nrow(TMDB_cleaned)))
+print(paste("Кількість стовбців: ", ncol(TMDB_cleaned)))
+```
+```{r}
+# Перевірка загальних статистичних характеристик змінних
+summary(TMDB_cleaned)
+```
+```{r}
+# Перевірка перших та останніх рядків DataFrame
+head(TMDB_cleaned)
+tail(TMDB_cleaned)
+```
+
