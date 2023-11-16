@@ -25,7 +25,7 @@ names(TMDB)
 ```
 ```{r}
 # Видалення нерелевантних даних
-TMDB_cleaned <- TMDB %>% select(-c(imdb_id, budget, revenue, homepage, tagline, keywords, overview, production_companies, release_date))
+TMDB_cleaned <- TMDB %>% select(-c(id, imdb_id, popularity, budget_adj, revenue_adj, cast, homepage, director, tagline, keywords, overview, production_companies, release_date))
 TMDB_cleaned
 ```
 ```{r}
@@ -57,12 +57,12 @@ print(zero_count)
 ```{r}
 # Видалення рядків, де budget, revenue та runtime дорівнює 0
 TMDB_cleaned <- TMDB_cleaned %>%
-  filter(budget_adj > 0 & revenue_adj > 0 & runtime > 0)
-
-# Перевірка результату
-summary(TMDB_cleaned$budget_adj)
-summary(TMDB_cleaned$revenue_adj)
-summary(TMDB_cleaned$runtime)
+  filter(budget > 0 & revenue > 0 & runtime > 0)
+# Встановлення параметра scipen
+options(scipen=999)
+# Визначення мінімального значення для змінних budget, revenue та runtime
+min_data <- sapply(TMDB_cleaned[, c("runtime", "budget", "revenue")], min, na.rm = TRUE)
+min_data 
 ```
 ```{r}
 # Кількість зміних і спостережень
@@ -88,9 +88,33 @@ print(paste("Кількість рядків до видалення дублі�
 print(paste("Кількість рядків після видалення дублікатів: ", new_nrow))
 ```
 ```{r}
+# Встановлення порогового значення
+revenue_threshold <- 11000
+budget_threshold <- 1000
+
+# Відфільтровування фільмів з касовими зборами та бюджетом нижче порогового значення
+TMDB_cleaned <- TMDB_cleaned %>%
+  filter(revenue > revenue_threshold & budget > budget_threshold)
+
+# Перевірка результату
+summary(TMDB_cleaned$budget )
+summary(TMDB_cleaned$revenue )
+```
+
+```{r}
+# Фільтрування фільмів з касовими зборами менше за 20000 тисяч
+low_revenue_movies <- TMDB_cleaned %>%
+  filter(revenue < 20000)
+
+# Виведення перших рядків цього списка для перевірки
+low_revenue_movies
+```
+
+```{r}
 # Виведення структури DataFrame, що включає імена та типи змінних, а також перші кілька значень кожної змінної
 str(TMDB_cleaned)
 ```
+
 ```{r}
 # Перевірка розміру DataFrame
 print(paste("Кількість рядків: ", nrow(TMDB_cleaned)))
@@ -104,5 +128,202 @@ summary(TMDB_cleaned)
 # Перевірка перших та останніх рядків DataFrame
 head(TMDB_cleaned)
 tail(TMDB_cleaned)
+```
+```{r}
+# Розподіл рейтингу фільму (vote_average)
+ggplot(TMDB_cleaned, aes(x=vote_average)) + 
+  geom_histogram(binwidth=0.5, fill="blue", color="black", alpha=0.7) + 
+  labs(title="Розподіл рейтингу фільмів", x="Рейтинг", y="Кількість фільмів")
+```
+```{r}
+
+library(patchwork)
+p1 <- ggplot(TMDB_cleaned, aes(x=budget)) + 
+  geom_histogram(bins=30, fill="blue") + 
+  theme_minimal() + 
+  ggtitle("Бюджет")
+
+p2 <- ggplot(TMDB_cleaned, aes(x=revenue)) + 
+  geom_histogram(bins=30, fill="green") + 
+  theme_minimal() + 
+  ggtitle("Дохід")
+
+p3 <- ggplot(TMDB_cleaned, aes(x=runtime)) + 
+  geom_histogram(bins=30, fill="red") + 
+  theme_minimal() + 
+  ggtitle("Тривалість")
+
+p4 <- ggplot(TMDB_cleaned, aes(x=vote_average)) + 
+  geom_histogram(bins=30, fill="orange") + 
+  theme_minimal() + 
+  ggtitle("Середній Рейтинг")
+
+p5 <- ggplot(TMDB_cleaned, aes(x=release_year)) + 
+  geom_histogram(bins=30, fill="purple") + 
+  theme_minimal() + 
+  ggtitle("Рік Випуску")
+
+p6 <- ggplot(TMDB_cleaned, aes(x=vote_count)) + 
+  geom_histogram(bins=30, fill="yellow") + 
+  theme_minimal() + 
+  ggtitle("Кількість Голосів")
+
+# Об'єднання графіків за допомогою patchwork
+layout <- (p1 + p2) / (p3 + p4) / (p5 + p6)
+layout
+```
+
+```{r}
+ggplot(TMDB_cleaned, aes(x=revenue)) +
+  geom_density(fill="blue", color="black", alpha=0.7) +
+  theme_minimal() +
+  labs(title="Розподіл касових зборів", x="Касові збори", y="Щільність")
+```
+
+```{r}
+# Розділяємо жанри на різні рядки
+data_expanded <- TMDB_cleaned %>%
+  separate_rows(genres, sep = "\\|")
+```
+
+
+```{r}
+# Перетворення жанрів на бінарні змінні (dummy variables)
+data_dummies <- data_expanded %>%
+  pivot_wider(names_from = genres, values_from = genres, values_fill = list(genres = "Absent")) %>%
+  mutate(across(-c(original_title, runtime, vote_count, vote_average, release_year, budget, revenue), ~ifelse(. == "Absent", 0, 1)))
+```
+
+```{r}
+# Перевірка перших та останніх рядків DataFrame
+data_dummies <- data_dummies %>% rename(TV_Movie = `TV Movie`)
+data_dummies <- data_dummies %>% rename(Science_Fiction = `Science Fiction`)
+head(data_dummies)
+```
+
+```{r}
+# Описова статистика
+summary(data_dummies)
+```
+```{r}
+#завантаження пакету ggcorrplot
+
+library(ggcorrplot)
+
+# Кореляційний аналіз
+data_numbers <- TMDB_cleaned %>% select(-c(original_title, genres))
+correlation_matrix <- cor(data_numbers)
+```
+```{r}
+# Візуалізація кореляційної матриці
+ggcorrplot(correlation_matrix, lab = TRUE,title ='Correlation Matrix of Movie Variables', lab_size = 3)
+```
+```{r}
+# Кореляційний аналіз
+data_num <- data_dummies %>% select(-c(original_title, runtime, vote_count, release_year, budget, Adventure, Thriller, Fantasy, Crime, Western, Family, Comedy, Mystery, Romance, Music,   Foreign, TV_Movie))
+correlation_mat <- cor(data_num)
+
+# Візуалізація кореляційної матриці
+ggcorrplot(correlation_mat, lab = TRUE,title ='Correlation Matrix of Movie Variables', lab_size = 3)
+```
+```{r}
+# Побудова графіку Бюджет vs Доходи
+ggplot(TMDB_cleaned, aes(x = budget, y = revenue)) +
+    geom_point(aes(color = vote_average), alpha = 0.6) +  # Додавання кольору залежно від рейтингу
+    geom_smooth(method = "lm", se = FALSE, color = "blue") +  # Лінія регресії
+    scale_x_continuous(labels = scales::comma) +  # Форматування осі X
+    scale_y_continuous(labels = scales::comma) +  # Форматування осі Y
+    labs(title = "Бюджет vs Касові збори", x = "Бюджет (у доларах)", y = "Касові збори (у доларах)") +
+    theme_minimal() +  # Застосування теми
+    theme(legend.position = "bottom")  # Розміщення легенди
+```
+```{r}
+# Побудова графіку Кількість голосів vs Доходи
+ggplot(TMDB_cleaned, aes(x = vote_count, y = revenue)) +
+    geom_point(alpha = 0.5) + # використання прозорості для кращого візуального представлення
+    geom_smooth(method = "lm", se = FALSE, color = "blue") +  # Лінія регресії
+    scale_x_continuous(labels = scales::comma) +  # Форматування осі X
+    scale_y_continuous(labels = scales::comma) +  # Форматування осі Y
+    theme_minimal() +  # Застосування теми
+    labs(title = "Кількість голосів vs Касові збори", x = "Кількість голосів", y = "Касові збори")
+```
+```{r}
+# Створення графіка
+ggplot(TMDB_cleaned, aes(x = vote_count, y = vote_average)) +
+    geom_point(alpha = 0.5) + # використання прозорості для кращого відображення даних
+    geom_smooth(method = "lm", se = FALSE, color = "blue") +  # Лінія регресії
+    theme_minimal() +
+    labs(title = "Кількість Голосів vs Рейтинг",
+         x = "Кількість Голосів",
+         y = "Рейтинг")
+```
+
+
+
+
+```{r}
+genres_data <- data_dummies %>% 
+  gather(key=genre, value=value, -original_title, -runtime, -vote_count, -vote_average, -release_year, -budget, -revenue, -Foreign, -TV_Movie) %>% 
+  filter(value == 1)
+
+genre_rating <- genres_data %>%
+  group_by(genre) %>%
+  summarise(avg_rating = mean(vote_average))
+
+ggplot(genre_rating, aes(x=genre, y=avg_rating)) + 
+  geom_bar(stat="identity", fill="purple") + 
+  coord_flip() +
+  labs(title="Середній рейтинг за жанром", x="Жанр", y="Середній рейтинг")
+```
+```{r}
+genres_data <- data_dummies %>% 
+  gather(key=genre, value=value, -original_title, -runtime, -vote_count, -vote_average, -release_year, -budget, -revenue, -Foreign, -TV_Movie) %>% 
+  filter(value == 1)
+
+genre_rating <- genres_data %>%
+  group_by(genre) %>%
+  summarise(avg_revenue = mean(revenue))
+
+ggplot(genre_rating, aes(x=genre, y=avg_revenue)) + 
+  geom_bar(stat="identity", fill="purple") + 
+  coord_flip() +
+  labs(title="Середній дохід за жанром", x="Жанр", y="Середній дохід")
+```
+
+```{r}
+# Підготовка даних: зміна структури даних з широкої на довгу
+long_data <- data_dummies %>%
+  pivot_longer(
+    cols = c(Action, Animation, Science_Fiction, Adventure, Comedy, Documentary, Drama, Thriller, Fantasy, History, Horror, Crime, Western, War, Family, Mystery, Romance, Music), # Замініть на назви ваших жанрових колонок
+    names_to = "Genre",
+    values_to = "Genre_Present"
+  ) %>%
+  filter(Genre_Present == 1)
+
+# Розрахунок середнього чистого доходу за жанрами
+average_net_revenue_by_genre <- long_data %>%
+  group_by(Genre) %>%
+  summarize(
+    Average_Net_Revenue = mean(revenue - budget, na.rm = TRUE)
+  )
+
+# Візуалізація
+ggplot(average_net_revenue_by_genre, aes(x = Genre, y = Average_Net_Revenue)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  theme_minimal() +
+  coord_flip() + # Для горизонтального бар-графіка
+  labs(title = "Середній чистий дохід фільмів за жанрами",
+       x = "Жанр",
+       y = "Середній чистий дохід")
+```
+```{r}
+genre_count <- genres_data %>%
+  group_by(genre) %>%
+  count()
+
+ggplot(genre_count, aes(x=genre, y=n)) + 
+  geom_bar(stat="identity", fill="cyan") + 
+  coord_flip() +
+  labs(title="Кількість фільмів за жанром", x="Жанр", y="Кількість фільмів")
 ```
 
