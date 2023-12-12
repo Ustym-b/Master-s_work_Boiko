@@ -104,12 +104,11 @@ summary(TMDB_cleaned$revenue )
 ```{r}
 # Фільтрування фільмів з касовими зборами менше за 20000 тисяч
 low_revenue_movies <- TMDB_cleaned %>%
-  filter(revenue < 20000)
+  filter(revenue > 20000)
 
 # Виведення перших рядків цього списка для перевірки
 low_revenue_movies
 ```
-
 ```{r}
 # Виведення структури DataFrame, що включає імена та типи змінних, а також перші кілька значень кожної змінної
 str(TMDB_cleaned)
@@ -138,35 +137,50 @@ ggplot(TMDB_cleaned, aes(x=vote_average)) +
 ```{r}
 
 library(patchwork)
+library(scales) # Для dollar_format
+
+# Графік бюджету з коригуванням осі X
 p1 <- ggplot(TMDB_cleaned, aes(x=budget)) + 
   geom_histogram(bins=30, fill="blue") + 
-  theme_minimal() + 
-  ggtitle("Бюджет")
+  scale_x_continuous(labels = dollar_format(prefix = "$", suffix = "", big.mark = ",")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + # Нахил тексту
+  ggtitle("Бюджет") +
+  xlab("Бюджет (в доларах)")
 
+# Графік доходу з коригуванням осі X
 p2 <- ggplot(TMDB_cleaned, aes(x=revenue)) + 
   geom_histogram(bins=30, fill="green") + 
-  theme_minimal() + 
-  ggtitle("Дохід")
+  scale_x_continuous(labels = dollar_format(prefix = "$", suffix = "", big.mark = ",")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + # Нахил тексту
+  ggtitle("Дохід") +
+  xlab("Дохід (в доларах)")
 
 p3 <- ggplot(TMDB_cleaned, aes(x=runtime)) + 
   geom_histogram(bins=30, fill="red") + 
   theme_minimal() + 
-  ggtitle("Тривалість")
+  ggtitle("Тривалість") +
+  xlab("Тривалість (у хвилинах)")
 
+# Графік середнього рейтингу
 p4 <- ggplot(TMDB_cleaned, aes(x=vote_average)) + 
   geom_histogram(bins=30, fill="orange") + 
   theme_minimal() + 
   ggtitle("Середній Рейтинг")
 
+# Графік року випуску
 p5 <- ggplot(TMDB_cleaned, aes(x=release_year)) + 
   geom_histogram(bins=30, fill="purple") + 
   theme_minimal() + 
   ggtitle("Рік Випуску")
 
+# Графік кількості голосів
 p6 <- ggplot(TMDB_cleaned, aes(x=vote_count)) + 
   geom_histogram(bins=30, fill="yellow") + 
   theme_minimal() + 
   ggtitle("Кількість Голосів")
+
 
 # Об'єднання графіків за допомогою patchwork
 layout <- (p1 + p2) / (p3 + p4) / (p5 + p6)
@@ -314,7 +328,7 @@ ggplot(average_net_revenue_by_genre, aes(x = Genre, y = Average_Net_Revenue)) +
   coord_flip() + # Для горизонтального бар-графіка
   labs(title = "Середній чистий дохід фільмів за жанрами",
        x = "Жанр",
-       y = "Середній чистий дохід")
+       y = "Середній чистий дохід (у доларах)")
 ```
 ```{r}
 genre_count <- genres_data %>%
@@ -326,4 +340,200 @@ ggplot(genre_count, aes(x=genre, y=n)) +
   coord_flip() +
   labs(title="Кількість фільмів за жанром", x="Жанр", y="Кількість фільмів")
 ```
+```{r}
+# Групування даних по року випуску та обчислення середніх значень касових зборів і середнього рейтингу
+trends <- aggregate(data_dummies[c('revenue', 'vote_average')], by=list(data_dummies$release_year), FUN=mean)
+colnames(trends) <- c('release_year', 'avg_revenue', 'avg_vote_average')
 
+# Побудова графіку для касових зборів
+g1 <- ggplot(trends, aes(x=release_year, y=avg_revenue)) +
+  geom_line() +
+  labs(title="Average Revenue Over Years", x="Release Year", y="Average Revenue")
+
+# Побудова графіку для середнього рейтингу
+g2 <- ggplot(trends, aes(x=release_year, y=avg_vote_average)) +
+  geom_line() +
+  labs(title="Average Vote Average Over Years", x="Release Year", y="Average Vote Average")
+
+# Об'єднання графіків за допомогою patchwork
+layout <- (g1 / g2)
+layout
+```
+```{r}
+# Функція для виявлення викидів за допомогою міжквартильного розмаху (IQR)
+detect_outliers <- function(df, feature) {
+  Q1 <- quantile(df[[feature]], 0.25)
+  Q3 <- quantile(df[[feature]], 0.75)
+  IQR <- Q3 - Q1
+  lower_bound <- Q1 - 1.5 * IQR
+  upper_bound <- Q3 + 1.5 * IQR
+  
+  return(which(df[[feature]] < lower_bound | df[[feature]] > upper_bound))
+}
+
+# Виявлення викидів для бюджету, касових зборів, тривалості та кількості голосів
+outliers_budget <- detect_outliers(data_dummies, 'budget')
+outliers_revenue <- detect_outliers(data_dummies, 'revenue')
+outliers_runtime <- detect_outliers(data_dummies, 'runtime')
+outliers_vote_count <- detect_outliers(data_dummies, 'vote_count')
+
+# Об'єднання всіх індексів викидів
+all_outliers <- c(outliers_budget, outliers_revenue, outliers_runtime, outliers_vote_count)
+
+# Видалення викидів з датасету
+movies_data_clean <- data_dummies[-unique(all_outliers), ]
+
+# Перегляд оновлених статистик
+summary(movies_data_clean)
+```
+
+```{r}
+# Вибір змінних для моделі
+predictors <- c("budget", "runtime", "vote_count", "release_year")
+
+# Підготовка даних для моделі касових зборів
+X_revenue <- data_dummies %>% select(all_of(predictors))
+y_revenue <- data_dummies$revenue
+
+# Розбиття даних на тренувальні та тестові набори
+set.seed(42)
+train_index <- sample(1:nrow(X_revenue), 0.7 * nrow(X_revenue))
+X_train_rev <- X_revenue[train_index, ]
+y_train_rev <- y_revenue[train_index]
+X_test_rev <- X_revenue[-train_index, ]
+y_test_rev <- y_revenue[-train_index]
+
+# Побудова моделі лінійної регресії
+model_revenue <- lm(y_train_rev ~ ., data = X_train_rev)
+summary(model_revenue)
+
+# Прогнозування та оцінка моделі
+predictions_rev <- predict(model_revenue, X_test_rev)
+MSE_revenue <- mean((predictions_rev - y_test_rev)^2)
+R2_revenue <- summary(model_revenue)$r.squared
+
+# Виведення результатів
+cat("MSE for Revenue Model: ", MSE_revenue, "\n")
+cat("R2 for Revenue Model: ", R2_revenue, "\n")
+
+```
+
+
+```{r}
+# Вибір змінних для моделі
+predictors <- c("budget", "runtime", "vote_count", "release_year")
+# Підготовка даних для моделі середнього рейтингу голосування
+X_vote <- data_dummies %>% select(all_of(predictors))
+y_vote <- data_dummies$vote_average
+
+# Розбиття даних на тренувальні та тестові набори
+set.seed(42)
+train_index_vote <- sample(1:nrow(X_vote), 0.7 * nrow(X_vote))
+X_train_vote <- X_vote[train_index_vote, ]
+y_train_vote <- y_vote[train_index_vote]
+X_test_vote <- X_vote[-train_index_vote, ]
+y_test_vote <- y_vote[-train_index_vote]
+
+# Побудова моделі лінійної регресії
+model_vote <- lm(y_train_vote ~ ., data = X_train_vote)
+summary(model_vote)
+
+# Прогнозування та оцінка моделі
+predictions_vote <- predict(model_vote, X_test_vote)
+MSE_vote <- mean((predictions_vote - y_test_vote)^2)
+R2_vote <- summary(model_vote)$r.squared
+
+# Виведення результатів
+cat("MSE for Vote Average Model: ", MSE_vote, "\n")
+cat("R2 for Vote Average Model: ", R2_vote, "\n")
+
+```
+```{r}
+library(randomForest)
+
+# Підготовка даних для аналізу касових зборів
+# Видаляємо непотрібні стовпці
+movies_for_revenue <- data_dummies[, !(names(data_dummies) %in% c('Unnamed: 0', 'original_title', 'revenue', 'TV_Movie', 'Foreign'))]
+
+# Визначаємо змінну для прогнозування
+revenue <- data_dummies$revenue
+
+# Розділяємо дані на навчальний та тестовий набори (70% на 30%)
+set.seed(42) # для відтворюваності результатів
+train_indices <- sample(1:nrow(movies_for_revenue), 0.7*nrow(movies_for_revenue))
+train_data_revenue <- movies_for_revenue[train_indices, ]
+train_revenue <- revenue[train_indices]
+
+test_data_revenue <- movies_for_revenue[-train_indices, ]
+test_revenue <- revenue[-train_indices]
+
+# Створення моделі випадкового лісу для касових зборів
+rf_revenue <- randomForest(x = train_data_revenue, y = train_revenue, ntree = 100, importance = TRUE)
+
+# Оцінка моделі
+revenue_pred <- predict(rf_revenue, test_data_revenue)
+revenue_rsquare <- cor(test_revenue, revenue_pred)^2
+
+# Виведення результату
+print(paste('R-squared for revenue model:', revenue_rsquare))
+
+
+# Перетворюємо дані важливості змінних у data frame
+importance_revenue <- importance(rf_revenue, type = 1) # type 1 для %IncMSE
+importance_revenue_df <- data.frame(Feature = rownames(importance_revenue), 
+                                    Importance = importance_revenue[, 1])
+
+# Відсортуємо змінні за зменшенням важливості
+importance_revenue_df <- importance_revenue_df[order(importance_revenue_df$Importance, decreasing = TRUE), ]
+
+# Створимо графік важливості змінних для касових зборів
+ggplot(importance_revenue_df, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = 'identity') +
+  coord_flip() + # Перевертаємо графік для кращого відображення
+  xlab('') + 
+  ylab('% Increase in MSE') + 
+  ggtitle('Feature Importance for Revenue Model') +
+  theme_minimal()
+```
+```{r}
+# Аналогічно для аналізу рейтингу фільму
+movies_for_rating <- data_dummies[, !(names(data_dummies) %in% c('Unnamed: 0', 'original_title', 'vote_average', 'TV_Movie', 'Foreign'))]
+rating <- data_dummies$vote_average
+
+# Розділяємо дані
+set.seed(42) # для відтворюваності результатів
+train_data_rating <- movies_for_rating[train_indices, ]
+train_rating <- rating[train_indices]
+
+test_data_rating <- movies_for_rating[-train_indices, ]
+test_rating <- rating[-train_indices]
+
+# Створення моделі випадкового лісу для рейтингу
+rf_rating <- randomForest(x = train_data_rating, y = train_rating, ntree = 100, importance = TRUE)
+
+# Оцінка моделі
+rating_pred <- predict(rf_rating, test_data_rating)
+rating_rsquare <- cor(test_rating, rating_pred)^2
+
+# Виведення результату
+print(paste('R-squared for rating model:', rating_rsquare))
+
+# Важливість змінних
+importance_rating <- importance(rf_rating)
+
+# Перетворюємо дані важливості змінних у data frame
+importance_rating_df <- data.frame(Feature=rownames(importance_rating), 
+                                    Importance=importance_rating[,'%IncMSE'])
+
+# Відсортуємо змінні за зменшенням важливості
+importance_rating_df <- importance_rating_df[order(-importance_rating_df$Importance), ]
+
+# Створимо графік важливості змінних для рейтингу
+ggplot(importance_rating_df, aes(x=reorder(Feature, Importance), y=Importance)) +
+  geom_bar(stat='identity') +
+  coord_flip() + # Перевертаємо графік для кращого відображення
+  xlab('') + 
+  ylab('% Increase in MSE') + 
+  ggtitle('Feature Importance for Rating Model') +
+  theme_minimal()
+```
